@@ -79,3 +79,22 @@ impl Default for Blockchain {
         Self::new()
     }
 }
+
+fn valid_proof(last_proof: u64, proof: u64) -> bool {
+    let guess = format!("{last_proof}{proof}");
+
+    let mut hasher = Sha256::new();
+    hasher.update(guess);
+    let guess_hash = String::from_utf8_lossy(&hasher.finalize()).to_string();
+
+    guess_hash.starts_with("0000")
+}
+
+pub fn proof_of_work(last_proof: u64) -> u64 {
+    let mut proof = 0;
+    while !valid_proof(last_proof, proof) {
+        proof += 1;
+    }
+
+    proof
+}
