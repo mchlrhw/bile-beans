@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Transaction {
     sender: String,
     recipient: String,
@@ -46,13 +46,7 @@ impl Blockchain {
         }
     }
 
-    pub fn new_transaction(&mut self, sender: &str, recipient: &str, amount: u64) -> usize {
-        let transaction = Transaction {
-            sender: sender.to_owned(),
-            recipient: recipient.to_owned(),
-            amount,
-        };
-
+    pub fn new_transaction(&mut self, transaction: Transaction) -> usize {
         self.current_transactions.push(transaction);
 
         self.chain.len()
