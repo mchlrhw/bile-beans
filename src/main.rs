@@ -5,6 +5,7 @@ use axum::{
     Router,
 };
 use bile_beans::{proof_of_work, Block, Blockchain, Transaction};
+use serde::Serialize;
 use std::sync::{Arc, Mutex};
 
 struct Node {
@@ -52,8 +53,17 @@ async fn new_transaction(
     )
 }
 
-async fn full_chain() {
-    todo!()
+#[derive(Serialize)]
+struct FullChain {
+    chain: Vec<Block>,
+    length: usize,
+}
+
+async fn full_chain(State(node): State<NodeState>) -> Json<FullChain> {
+    let chain = node.lock().unwrap().blockchain.chain();
+    let length = chain.len();
+
+    Json(FullChain { chain, length })
 }
 
 #[tokio::main]

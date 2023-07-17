@@ -60,6 +60,10 @@ impl Blockchain {
         }
     }
 
+    pub fn chain(&self) -> Vec<Block> {
+        self.chain.clone()
+    }
+
     pub fn last_proof(&self) -> u64 {
         self.chain
             .last()
