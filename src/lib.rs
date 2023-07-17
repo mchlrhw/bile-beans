@@ -2,14 +2,31 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Serialize, Deserialize)]
+fn hash(s: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(s);
+
+    hex::encode(&hasher.finalize())
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Transaction {
     sender: String,
     recipient: String,
     amount: u64,
 }
 
-#[derive(Serialize)]
+impl Transaction {
+    pub fn new(sender: String, recipient: String, amount: u64) -> Self {
+        Self {
+            sender,
+            recipient,
+            amount,
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
 pub struct Block {
     timestamp: DateTime<Utc>,
     transactions: Vec<Transaction>,
@@ -19,10 +36,7 @@ pub struct Block {
 
 impl Block {
     fn hash(&self) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(serde_json::to_string(self).expect("serialization must succeed"));
-
-        String::from_utf8_lossy(&hasher.finalize()).into()
+        hash(&serde_json::to_string(self).expect("serialization must succeed"))
     }
 }
 
@@ -46,6 +60,13 @@ impl Blockchain {
         }
     }
 
+    pub fn last_proof(&self) -> u64 {
+        self.chain
+            .last()
+            .expect("we must always have a previous block")
+            .proof
+    }
+
     pub fn new_transaction(&mut self, transaction: Transaction) -> usize {
         self.current_transactions.push(transaction);
 
@@ -64,6 +85,8 @@ impl Blockchain {
                 .hash(),
         };
 
+        self.chain.push(block.clone());
+
         block
     }
 }
@@ -75,20 +98,17 @@ impl Default for Blockchain {
 }
 
 fn valid_proof(last_proof: u64, proof: u64) -> bool {
-    let guess = format!("{last_proof}{proof}");
+    let guess = hash(&format!("{last_proof}{proof}"));
 
-    let mut hasher = Sha256::new();
-    hasher.update(guess);
-    let guess_hash = String::from_utf8_lossy(&hasher.finalize()).to_string();
-
-    guess_hash.starts_with("0000")
+    guess.starts_with("0000")
 }
 
 pub fn proof_of_work(last_proof: u64) -> u64 {
-    let mut proof = 0;
-    while !valid_proof(last_proof, proof) {
-        proof += 1;
+    for proof in 0.. {
+        if valid_proof(last_proof, proof) {
+            return proof;
+        }
     }
 
-    proof
+    panic!("we should always find a proof")
 }

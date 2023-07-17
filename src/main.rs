@@ -4,19 +4,19 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use bile_beans::{Blockchain, Transaction};
+use bile_beans::{proof_of_work, Block, Blockchain, Transaction};
 use std::sync::{Arc, Mutex};
 
 struct Node {
     blockchain: Blockchain,
-    _id: String,
+    id: String,
 }
 
 impl Node {
     fn new() -> Self {
         Self {
             blockchain: Default::default(),
-            _id: uuid::Uuid::new_v4().to_string().replace('-', ""),
+            id: uuid::Uuid::new_v4().to_string().replace('-', ""),
         }
     }
 }
@@ -29,8 +29,15 @@ impl Default for Node {
 
 type NodeState = Arc<Mutex<Node>>;
 
-async fn mine() {
-    todo!()
+async fn mine(State(node): State<NodeState>) -> Json<Block> {
+    let mut node = node.lock().unwrap();
+    let last_proof = node.blockchain.last_proof();
+    let proof = proof_of_work(last_proof);
+
+    let transaction = Transaction::new("0".to_string(), node.id.clone(), 1);
+    node.blockchain.new_transaction(transaction);
+
+    Json(node.blockchain.new_block(proof))
 }
 
 async fn new_transaction(
