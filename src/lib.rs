@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -6,7 +7,7 @@ fn hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);
 
-    hex::encode(&hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -26,7 +27,7 @@ impl Transaction {
     }
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Block {
     timestamp: DateTime<Utc>,
     transactions: Vec<Transaction>,
@@ -93,6 +94,38 @@ impl Blockchain {
 
         block
     }
+
+    pub fn resolve_conflicts(&mut self, chains: &[Vec<Block>]) -> Vec<Block> {
+        let mut new_chain: Option<Vec<Block>> = None;
+        let mut longest = self.chain.len();
+
+        for chain in chains {
+            if chain.len() > longest && is_valid(chain) {
+                longest = chain.len();
+                new_chain = Some(chain.to_owned());
+            }
+        }
+
+        if let Some(new_chain) = new_chain {
+            self.chain = new_chain;
+        }
+
+        self.chain.clone()
+    }
+}
+
+fn is_valid(chain: &[Block]) -> bool {
+    for (block_a, block_b) in chain.iter().tuple_windows() {
+        if block_b.previous_hash != block_a.hash() {
+            return false;
+        }
+
+        if !valid_proof(block_a.proof, block_b.proof) {
+            return false;
+        }
+    }
+
+    true
 }
 
 impl Default for Blockchain {

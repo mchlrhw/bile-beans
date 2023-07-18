@@ -5,19 +5,25 @@ use axum::{
     Router,
 };
 use bile_beans::{proof_of_work, Block, Blockchain, Transaction};
-use serde::Serialize;
-use std::sync::{Arc, Mutex};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashSet,
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+};
 
 struct Node {
     blockchain: Blockchain,
     id: String,
+    neighbours: HashSet<SocketAddr>,
 }
 
 impl Node {
     fn new() -> Self {
         Self {
-            blockchain: Default::default(),
             id: uuid::Uuid::new_v4().to_string().replace('-', ""),
+            blockchain: Default::default(),
+            neighbours: Default::default(),
         }
     }
 }
@@ -53,7 +59,7 @@ async fn new_transaction(
     )
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct FullChain {
     chain: Vec<Block>,
     length: usize,
@@ -61,6 +67,49 @@ struct FullChain {
 
 async fn full_chain(State(node): State<NodeState>) -> Json<FullChain> {
     let chain = node.lock().unwrap().blockchain.chain();
+    let length = chain.len();
+
+    Json(FullChain { chain, length })
+}
+
+#[derive(Deserialize)]
+struct Nodes {
+    nodes: Vec<SocketAddr>,
+}
+
+#[derive(Serialize)]
+struct TotalNodes {
+    total_nodes: HashSet<SocketAddr>,
+}
+
+async fn register_node(
+    State(node): State<NodeState>,
+    Json(nodes): Json<Nodes>,
+) -> (StatusCode, Json<TotalNodes>) {
+    let mut node = node.lock().unwrap();
+    node.neighbours.extend(&nodes.nodes);
+
+    let resp_body = Json(TotalNodes {
+        total_nodes: node.neighbours.clone(),
+    });
+
+    (StatusCode::CREATED, resp_body)
+}
+
+async fn consensus(State(node): State<NodeState>) -> Json<FullChain> {
+    let mut chains = vec![];
+    let neighbours = node.lock().unwrap().neighbours.clone();
+    for neighbour in neighbours {
+        let FullChain { chain, .. }: FullChain = reqwest::get(format!("http://{neighbour}/chain"))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        chains.push(chain);
+    }
+
+    let chain = node.lock().unwrap().blockchain.resolve_conflicts(&chains);
     let length = chain.len();
 
     Json(FullChain { chain, length })
@@ -74,9 +123,14 @@ async fn main() {
         .route("/mine", get(mine))
         .route("/transaction/new", post(new_transaction))
         .route("/chain", get(full_chain))
+        .route("/node/register", post(register_node))
+        .route("/node/resolve", get(consensus))
         .with_state(node);
 
-    axum::Server::bind(&"0.0.0.0:5000".parse().unwrap())
+    let port = std::env::args().nth(1).unwrap();
+    let addr = format!("127.0.0.1:{port}");
+
+    axum::Server::bind(&addr.parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();
